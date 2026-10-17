@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="theme-color" content="#0288d1"/>
+  <link rel="manifest" href="./manifest.webmanifest"/>
+  <title>Speech Game Builder</title>
+  <style>
+    body{margin:0;font-family:system-ui,sans-serif;min-height:100vh;background:linear-gradient(135deg,#7bd3ff,#3a9de8);display:flex;align-items:center;justify-content:center;padding:24px;color:#1a1a2e}
+    .card{background:#fff;border-radius:24px;padding:32px;max-width:520px;width:100%;box-shadow:0 20px 50px rgba(0,0,0,.15);text-align:center}
+    h1{margin:0 0 8px;font-size:1.6rem}
+    p{color:#5a6a7a;line-height:1.5}
+    a.btn{display:inline-block;margin:8px;padding:12px 22px;border-radius:50px;background:linear-gradient(135deg,#0288d1,#4fc3f7);color:#fff;text-decoration:none;font-weight:700}
+    a.btn2{background:linear-gradient(135deg,#ff6f61,#ff8a65)}
+    code{background:#f0f7ff;padding:2px 6px;border-radius:6px;font-size:.85rem}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>🎤 Speech Game Builder</h1>
+    <p>Vosk PWA player + offline-friendly spelling games.</p>
+    <p>
+      <a class="btn" href="./play.html">Open demo player</a>
+      <a class="btn btn2" href="./dashboard.html">Teacher dashboard</a>
+    </p>
+    <p style="font-size:.9rem">Students open a <strong>Share play link</strong> from the dashboard (works best on this site for offline mic after the first visit).</p>
+    <p style="font-size:.85rem;color:#5a6a7a">First visit online downloads the voice model (~40MB). Later visits can use the mic offline. Type &amp; Tiles always work.</p>
+  </div>
+  <script>
+    if ('serviceWorker' in navigator && location.protocol.indexOf('http') === 0) {
+      navigator.serviceWorker.register('./sw.js').catch(function(){});
+    }
+  </script>
+</body>
+</html>
