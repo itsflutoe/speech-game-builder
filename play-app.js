@@ -110,7 +110,14 @@ async function startVoskListen(token) {
   rec.on('partialresult', (message) => {
     if (token !== listenToken) return;
     const p = (message && message.result && message.result.partial) ? message.result.partial.split('[unk]').join(' ').trim() : '';
-    if (p) document.getElementById('heardText').textContent = p;
+    if (p) {
+      document.getElementById('heardText').textContent = p;
+      if (!lastResultHandled && isMatch(p, LESSON.cards[currentIndex], 'lenient')) {
+        lastResultHandled = true;
+        stopVoskListen(); stopListeningUI();
+        handleResult([p]);
+      }
+    }
   });
   voskSource = voskAudioCtx.createMediaStreamSource(stream);
   voskProcessor = voskAudioCtx.createScriptProcessor(4096, 1, 1);
@@ -131,25 +138,38 @@ async function startVoskListen(token) {
 function createCloudRec() {
   const rec = new SpeechRecognition();
   rec.lang = 'en-US'; rec.interimResults = true; rec.maxAlternatives = 5;
+  rec.continuous = false;
   rec.onstart = () => {
     isListening = true; isStarting = false;
     document.getElementById('micBtn').classList.add('listening');
     document.getElementById('micBtn').textContent = '⏹';
-    document.getElementById('micLabel').textContent = 'Listening…';
+    document.getElementById('micLabel').textContent = 'Listening… say the word clearly';
   };
   rec.onresult = (event) => {
     let interim = '', finals = [];
     for (let i = event.resultIndex; i < event.results.length; i++) {
-      const t = event.results[i][0].transcript.trim();
-      if (event.results[i].isFinal) finals.push(t); else interim = t;
+      const alts = [];
+      for (let a = 0; a < event.results[i].length; a++) alts.push(event.results[i][a].transcript.trim());
+      const t = alts[0] || '';
+      if (event.results[i].isFinal) finals = finals.concat(alts);
+      else interim = t;
     }
-    if (interim) document.getElementById('heardText').textContent = interim;
+    if (interim) {
+      document.getElementById('heardText').textContent = interim;
+      if (!lastResultHandled && LESSON.cards[currentIndex] && isMatch(interim, LESSON.cards[currentIndex], 'lenient')) {
+        lastResultHandled = true;
+        try { recognition.stop(); } catch (e) {}
+        handleResult([interim]);
+        return;
+      }
+    }
     if (finals.length && !lastResultHandled) { lastResultHandled = true; handleResult(finals); }
   };
   rec.onerror = (e) => {
     isStarting = false; stopListeningUI();
     if (e.error === 'network') { setFeedback('No internet. Use Type or Tiles.', 'retry'); showTypeInput(); }
-    else if (e.error !== 'aborted') setFeedback('Mic issue. Try Type / Tiles.', 'retry');
+    else if (e.error === 'no-speech') setFeedback("Didn't catch speech. Tap mic, wait for pulse, then speak.", 'retry');
+    else if (e.error !== 'aborted') setFeedback('Mic issue (' + e.error + '). Try Type / Tiles.', 'retry');
   };
   rec.onend = () => { isStarting = false; stopListeningUI(); };
   return rec;
@@ -176,23 +196,23 @@ function toggleListen() {
   document.getElementById('micBtn').classList.add('listening');
   document.getElementById('micBtn').textContent = '…';
 
-  if (!voskReady && SpeechRecognition && navigator.onLine) {
-    try { if (!recognition) recognition = createCloudRec(); recognition.start(); } catch (e) {
-      isStarting = false; stopListeningUI(); setFeedback('Could not start mic.', 'retry');
+  // Prefer browser speech when ONLINE (much better accuracy than small Vosk).
+  // Use Vosk only when offline (or if cloud fails).
+  if (SpeechRecognition && navigator.onLine) {
+    try {
+      if (!recognition) recognition = createCloudRec();
+      recognition.start();
+      document.getElementById('micLabel').textContent = 'Listening… say the word clearly';
+      return;
+    } catch (e) {
+      console.warn('cloud start failed', e);
     }
-    return;
   }
   ensureVosk().then(ok => {
     if (token !== listenToken) return;
     if (ok) return startVoskListen(token);
-    if (SpeechRecognition && navigator.onLine) {
-      try { if (!recognition) recognition = createCloudRec(); recognition.start(); } catch (e) {
-        isStarting = false; stopListeningUI(); showTypeInput();
-      }
-      return;
-    }
     isStarting = false; stopListeningUI();
-    setFeedback('Offline and voice model not ready. Use Type or Tiles.', 'retry');
+    setFeedback('Could not start mic. Use Type or Tiles.', 'retry');
     showTypeInput();
   }).catch(() => {
     if (token !== listenToken) return;
@@ -214,19 +234,22 @@ function lev(a,b) {
 }
 function isMatch(spoken, card, mode) {
   mode = mode || LESSON.matchMode || 'normal';
+  if (mode === 'normal') mode = 'lenient';
   const targets = [card.targetWord].concat(String(card.aliases||'').split(',').map(a=>a.trim()).filter(Boolean)).map(cleanText).filter(Boolean);
   const spokenClean = cleanText(spoken); if (!spokenClean) return false;
   const words = spokenClean.split(/\s+/);
   const candidates = words.concat([words.join(''), lettersOnly(spokenClean)]);
   return targets.some(t => {
     const tL = lettersOnly(t);
+    if (!tL) return false;
+    if (words.indexOf(t) !== -1 || words.indexOf(tL) !== -1) return true;
     return candidates.some(w => {
-      const wL = lettersOnly(w); if (!wL||!tL) return false;
-      if (wL===tL||w===t) return true;
-      if (mode==='strict') return false;
-      if (mode==='normal' && tL.length>=5 && lev(wL,tL)<=1) return true;
-      if (mode==='lenient' && tL.length>=4 && lev(wL,tL)<=1) return true;
-      if (mode==='lenient' && tL.length>=7 && lev(wL,tL)<=2) return true;
+      const wL = lettersOnly(w); if (!wL) return false;
+      if (wL === tL || w === t) return true;
+      if (mode === 'strict') return false;
+      const maxDist = tL.length <= 4 ? 1 : (tL.length <= 7 ? 2 : 3);
+      if (mode === 'lenient' && lev(wL, tL) <= maxDist) return true;
+      if (mode === 'normal' && tL.length >= 5 && lev(wL, tL) <= 1) return true;
       return false;
     });
   });
@@ -239,9 +262,9 @@ function handleResult(transcripts, fromTyping) {
   const card = LESSON.cards[currentIndex];
   const heard = (transcripts||[]).filter(Boolean);
   if (heard[0]) document.getElementById('heardText').textContent = heard[0];
-  const mode = fromTyping ? 'strict' : (LESSON.matchMode||'normal');
+  const mode = fromTyping ? 'strict' : 'lenient';
   if (heard.some(t => isMatch(t, card, mode))) onCorrect();
-  else setFeedback("Hmm, that didn't quite match. Try again!", 'retry');
+  else setFeedback('I heard: "' + (heard[0] || '…') + '" — try again, or use Type / Tiles.', 'retry');
 }
 
 function renderWordSlots(card, revealAll) {
@@ -380,11 +403,11 @@ if (!loadLessonFromHash()) {
     matchMode: 'normal',
     cards: [{ targetWord: 'FROG', blanks: [false, true, false, false], hint: 'A green animal that hops', aliases: '', imageData: null }]
   };
-  setStatus('No lesson in the link — showing a demo card. Open a share link from the teacher dashboard.');
+  setStatus('Demo word: FROG. Use Chrome/Edge, allow mic, speak clearly.');
 }
 document.getElementById('gameTitle').textContent = LESSON.title || 'Speech Game';
 loadCard(0);
-if (location.protocol.indexOf('http') === 0) setTimeout(() => ensureVosk(), 500);
+// Do not force Vosk preload online — browser speech is more accurate when online.
 document.addEventListener('keydown', e => {
   if (e.key === 'Enter' && document.getElementById('typeArea').style.display === 'block') submitTyped();
 });
