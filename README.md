@@ -8,7 +8,8 @@ After enabling Pages (Settings → Pages → Deploy from branch `main` / root):
 
 **https://itsflutoe.github.io/speech-game-builder/**
 
-- **Teacher dashboard:** `/` or `/index.html`
+- **Teacher dashboard:** `/dashboard.html`
+- **Home:** `/` or `/index.html`
 - **Player:** `/play.html` (lesson data in the URL hash)
 
 ### How offline mic works on the website
@@ -20,12 +21,13 @@ After enabling Pages (Settings → Pages → Deploy from branch `main` / root):
 
 ### Offline export (no website)
 
-In the dashboard, click **Export Offline HTML**.
-Students double-click the file. **Type / Tiles / Hear word** work offline. Mic uses the browser service when online.
+In the dashboard, click **Export Offline HTML**.  
+Students double-click the downloaded file. **Type / Tiles / Hear word** work offline. Mic uses the browser speech API when online (Vosk is not embedded in the export to keep file size small).
 
 ### Share play link
 
-On the hosted site, open a lesson and click **Share play link** to copy a student URL for that lesson.
+On the hosted site, open a lesson and click **Copy play link** to copy a student URL for that lesson.  
+Tip: large images can make the URL too long — use **Export Offline HTML** instead, or remove some images.
 
 ## Local test
 

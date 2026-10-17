@@ -1,9 +1,12 @@
-const CACHE = 'speech-game-v2';
+const CACHE = 'speech-game-v3';
 const CORE = [
   './',
   './index.html',
   './play.html',
-  './manifest.webmanifest'
+  './play-app.js',
+  './dashboard.html',
+  './manifest.webmanifest',
+  './sw.js'
 ];
 
 self.addEventListener('install', (e) => {
