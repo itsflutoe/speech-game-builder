@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="theme-color" content="#0288d1"/>
+  <link rel="manifest" href="./manifest.webmanifest"/>
+  <title>Teacher Dashboard – Speech Game</title>
+  <style>
+    :root { --primary:#0288d1; --coral:#ff6f61; --bg:#e8f4fc; --text:#1a1a2e; --muted:#5a6a7a; --border:#d0e4f5; }
+    * { box-sizing:border-box; margin:0; padding:0; }
+    body { font-family: system-ui, sans-serif; background: var(--bg); color: var(--text); min-height:100vh; padding:16px; }
+    h1 { font-size:1.35rem; color:var(--primary); margin-bottom:4px; }
+    .sub { color:var(--muted); font-size:.85rem; margin-bottom:16px; }
+    .row { display:flex; flex-wrap:wrap; gap:10px; margin-bottom:12px; }
+    label { display:block; font-size:.8rem; font-weight:600; color:var(--muted); margin-bottom:4px; }
+    input, textarea, select { width:100%; padding:10px 12px; border:1.5px solid var(--border); border-radius:12px; font-size:1rem; background:#fff; }
+    .card { background:#fff; border-radius:16px; padding:16px; margin-bottom:12px; border:1px solid var(--border); box-shadow:0 4px 14px rgba(0,80,160,.06); }
+    .btn { border:none; border-radius:50px; padding:10px 18px; font-weight:700; cursor:pointer; font-size:.9rem; }
+    .btn-primary { background:linear-gradient(135deg,#0288d1,#4fc3f7); color:#fff; }
+    .btn-coral { background:linear-gradient(135deg,#ff6f61,#ff8a65); color:#fff; }
+    .btn-ghost { background:#fff; border:1.5px solid var(--border); color:var(--muted); }
+    .btn-danger { background:#fff; border:1.5px solid #ef9a9a; color:#e53935; }
+    .letters { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+    .letter { width:36px; height:42px; border-radius:10px; border:2px solid #c5daf5; background:#fff; font-weight:800; cursor:pointer; }
+    .letter.blank { border-style:dashed; color:#90a4ae; background:#f8fbff; }
+    .toast { position:fixed; bottom:16px; right:16px; background:#fff; padding:12px 16px; border-radius:12px; box-shadow:0 8px 28px rgba(0,0,0,.15); display:none; max-width:320px; font-weight:600; }
+    .toast.show { display:block; }
+    a.top { color:var(--primary); font-weight:600; text-decoration:none; font-size:.9rem; }
+  </style>
+</head>
+<body>
+  <p><a class="top" href="./">← Home</a> · <a class="top" href="./play.html">Demo player</a></p>
+  <h1>📚 Teacher Dashboard</h1>
+  <p class="sub">Build a lesson, then share a play link. Students open it on this site (Chrome/Edge recommended).</p>
+
+  <div class="card">
+    <div class="row">
+      <div style="flex:1;min-width:180px">
+        <label>Game title</label>
+        <input id="title" value="My Lesson" />
+      </div>
+      <div style="flex:1;min-width:180px">
+        <label>Subject</label>
+        <input id="subject" placeholder="e.g. Science" />
+      </div>
+    </div>
+    <div class="row">
+      <button class="btn btn-primary" onclick="shareLink()">🔗 Copy play link</button>
+      <button class="btn btn-coral" onclick="openPlay()">▶ Open player</button>
+      <button class="btn btn-ghost" onclick="saveLocal()">💾 Save in this browser</button>
+      <button class="btn btn-ghost" onclick="loadLocal()">📂 Load saved</button>
+    </div>
+  </div>
+
+  <div id="cards"></div>
+  <button class="btn btn-ghost" style="width:100%;margin-bottom:24px" onclick="addCard()">＋ Add card</button>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+  const STORAGE = 'stt_dash_lesson_v1';
+  let cards = [
+    { targetWord: 'FROG', blanks: [false, true, false, false], hint: 'A green animal that hops', aliases: '', imageData: null }
+  ];
+
+  function toast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg; t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 2800);
+  }
+
+  function lettersOf(w) {
+    return String(w || '').toUpperCase().replace(/[^A-Z]/g, '');
+  }
+
+  function render() {
+    const root = document.getElementById('cards');
+    root.innerHTML = cards.map((c, i) => {
+      const L = lettersOf(c.targetWord);
+      if (!c.blanks || c.blanks.length !== L.length) {
+        c.blanks = L.split('').map(ch => 'AEIOU'.includes(ch));
+      }
+      const toggles = L.split('').map((ch, j) =>
+        `<button type="button" class="letter ${c.blanks[j] ? 'blank' : ''}" onclick="toggleBlank(${i},${j})">${c.blanks[j] ? '_' : ch}</button>`
+      ).join('');
+      return `<div class="card">
+        <strong>Card ${i + 1}</strong>
+        <label style="margin-top:10px">Target word</label>
+        <input value="${escapeAttr(c.targetWord)}" oninput="onWord(${i}, this.value)" style="text-transform:uppercase" />
+        <label style="margin-top:10px">Blanks (click to hide/show)</label>
+        <div class="letters">${toggles || '<span style="color:#5a6a7a">Type a word</span>'}</div>
+        <label style="margin-top:10px">Aliases (comma-separated, helps voice)</label>
+        <input value="${escapeAttr(c.aliases || '')}" oninput="cards[${i}].aliases=this.value" placeholder="e.g. tad pole" />
+        <label style="margin-top:10px">Hint</label>
+        <input value="${escapeAttr(c.hint || '')}" oninput="cards[${i}].hint=this.value" />
+        <label style="margin-top:10px">Image (optional)</label>
+        <input type="file" accept="image/*" onchange="onImage(event, ${i})" />
+        <div style="margin-top:10px">
+          <button class="btn btn-danger" onclick="removeCard(${i})">Remove</button>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  function escapeAttr(s) {
+    return String(s || '').replace(/&/g,'&').replace(/"/g,'"').replace(/</g,'<');
+  }
+
+  function onWord(i, v) {
+    cards[i].targetWord = String(v || '').toUpperCase().replace(/[^A-Z\s\-']/g, '').trim();
+    const L = lettersOf(cards[i].targetWord);
+    if (!cards[i].blanks || cards[i].blanks.length !== L.length) {
+      cards[i].blanks = L.split('').map(ch => 'AEIOU'.includes(ch));
+    }
+    render();
+  }
+
+  function toggleBlank(i, j) {
+    cards[i].blanks[j] = !cards[i].blanks[j];
+    render();
+  }
+
+  function onImage(e, i) {
+    const f = e.target.files[0];
+    if (!f) return;
+    const r = new FileReader();
+    r.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const max = 400;
+        let w = img.width, h = img.height;
+        if (w > max || h > max) {
+          if (w > h) { h = Math.round(h * max / w); w = max; }
+          else { w = Math.round(w * max / h); h = max; }
+        }
+        const c = document.createElement('canvas');
+        c.width = w; c.height = h;
+        c.getContext('2d').drawImage(img, 0, 0, w, h);
+        cards[i].imageData = c.toDataURL('image/jpeg', 0.8);
+        toast('Image added');
+      };
+      img.src = r.result;
+    };
+    r.readAsDataURL(f);
+  }
+
+  function addCard() {
+    cards.push({ targetWord: '', blanks: [], hint: '', aliases: '', imageData: null });
+    render();
+  }
+  function removeCard(i) {
+    if (cards.length <= 1) { toast('Need at least one card'); return; }
+    cards.splice(i, 1); render();
+  }
+
+  function lessonPayload() {
+    return {
+      title: document.getElementById('title').value.trim() || 'Speech Game',
+      subject: document.getElementById('subject').value.trim(),
+      matchMode: 'lenient',
+      cards: cards.filter(c => c.targetWord).map(c => ({
+        targetWord: c.targetWord.toUpperCase(),
+        blanks: c.blanks || [],
+        hint: c.hint || '',
+        aliases: c.aliases || '',
+        imageData: c.imageData || null
+      }))
+    };
+  }
+
+  function playUrl() {
+    const data = lessonPayload();
+    if (!data.cards.length) return null;
+    const base = location.href.replace(/[^/]*\.html.*$/i, '').replace(/\/?$/, '/');
+    return base + 'play.html#L=' + encodeURIComponent(JSON.stringify(data));
+  }
+
+  function shareLink() {
+    const url = playUrl();
+    if (!url) { toast('Add a target word first'); return; }
+    if (url.length > 12000) { toast('Lesson too large for a link (big images). Remove some images.'); return; }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url).then(() => toast('Play link copied!')).catch(() => prompt('Copy link:', url));
+    } else prompt('Copy link:', url);
+  }
+
+  function openPlay() {
+    const url = playUrl();
+    if (!url) { toast('Add a target word first'); return; }
+    location.href = url;
+  }
+
+  function saveLocal() {
+    try {
+      localStorage.setItem(STORAGE, JSON.stringify({
+        title: document.getElementById('title').value,
+        subject: document.getElementById('subject').value,
+        cards
+      }));
+      toast('Saved in this browser');
+    } catch (e) { toast('Save failed (storage full?)'); }
+  }
+
+  function loadLocal() {
+    try {
+      const raw = localStorage.getItem(STORAGE);
+      if (!raw) { toast('Nothing saved yet'); return; }
+      const d = JSON.parse(raw);
+      document.getElementById('title').value = d.title || '';
+      document.getElementById('subject').value = d.subject || '';
+      cards = d.cards || cards;
+      render();
+      toast('Loaded');
+    } catch (e) { toast('Load failed'); }
+  }
+
+  if ('serviceWorker' in navigator && location.protocol.indexOf('http') === 0) {
+    navigator.serviceWorker.register('./sw.js').catch(() => {});
+  }
+  render();
+  </script>
+</body>
+</html>
