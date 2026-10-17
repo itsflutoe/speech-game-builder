@@ -24,15 +24,17 @@
     .letters { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
     .letter { width:36px; height:42px; border-radius:10px; border:2px solid #c5daf5; background:#fff; font-weight:800; cursor:pointer; }
     .letter.blank { border-style:dashed; color:#90a4ae; background:#f8fbff; }
-    .toast { position:fixed; bottom:16px; right:16px; background:#fff; padding:12px 16px; border-radius:12px; box-shadow:0 8px 28px rgba(0,0,0,.15); display:none; max-width:320px; font-weight:600; }
+    .toast { position:fixed; bottom:16px; right:16px; background:#fff; padding:12px 16px; border-radius:12px; box-shadow:0 8px 28px rgba(0,0,0,.15); display:none; max-width:320px; font-weight:600; z-index:50; }
     .toast.show { display:block; }
     a.top { color:var(--primary); font-weight:600; text-decoration:none; font-size:.9rem; }
+    .thumb-wrap { margin-top:8px; display:flex; align-items:center; gap:10px; }
+    .thumb-wrap img { width:72px; height:72px; object-fit:cover; border-radius:12px; border:1px solid var(--border); }
   </style>
 </head>
 <body>
   <p><a class="top" href="./">← Home</a> · <a class="top" href="./play.html">Demo player</a></p>
   <h1>📚 Teacher Dashboard</h1>
-  <p class="sub">Build a lesson, then share a play link. Students open it on this site (Chrome/Edge recommended).</p>
+  <p class="sub">Build a lesson, then share a play link or export offline HTML. Chrome/Edge recommended for students.</p>
 
   <div class="card">
     <div class="row">
@@ -48,6 +50,7 @@
     <div class="row">
       <button class="btn btn-primary" onclick="shareLink()">🔗 Copy play link</button>
       <button class="btn btn-coral" onclick="openPlay()">▶ Open player</button>
+      <button class="btn btn-ghost" onclick="exportOffline()">⬇ Export Offline HTML</button>
       <button class="btn btn-ghost" onclick="saveLocal()">💾 Save in this browser</button>
       <button class="btn btn-ghost" onclick="loadLocal()">📂 Load saved</button>
     </div>
@@ -55,7 +58,6 @@
 
   <div id="cards"></div>
   <button class="btn btn-ghost" style="width:100%;margin-bottom:24px" onclick="addCard()">＋ Add card</button>
-
   <div class="toast" id="toast"></div>
 
   <script>
@@ -74,6 +76,14 @@
     return String(w || '').toUpperCase().replace(/[^A-Z]/g, '');
   }
 
+  function escapeAttr(s) {
+    return String(s || '')
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
+
   function render() {
     const root = document.getElementById('cards');
     root.innerHTML = cards.map((c, i) => {
@@ -82,43 +92,52 @@
         c.blanks = L.split('').map(ch => 'AEIOU'.includes(ch));
       }
       const toggles = L.split('').map((ch, j) =>
-        `<button type="button" class="letter ${c.blanks[j] ? 'blank' : ''}" onclick="toggleBlank(${i},${j})">${c.blanks[j] ? '_' : ch}</button>`
+        '<button type="button" class="letter ' + (c.blanks[j] ? 'blank' : '') + '" onclick="toggleBlank(' + i + ',' + j + ')">' +
+        (c.blanks[j] ? '_' : ch) + '</button>'
       ).join('');
-      return `<div class="card">
-        <strong>Card ${i + 1}</strong>
-        <label style="margin-top:10px">Target word</label>
-        <input value="${escapeAttr(c.targetWord)}" oninput="onWord(${i}, this.value)" style="text-transform:uppercase" />
-        <label style="margin-top:10px">Blanks (click to hide/show)</label>
-        <div class="letters">${toggles || '<span style="color:#5a6a7a">Type a word</span>'}</div>
-        <label style="margin-top:10px">Aliases (comma-separated, helps voice)</label>
-        <input value="${escapeAttr(c.aliases || '')}" oninput="cards[${i}].aliases=this.value" placeholder="e.g. tad pole" />
-        <label style="margin-top:10px">Hint</label>
-        <input value="${escapeAttr(c.hint || '')}" oninput="cards[${i}].hint=this.value" />
-        <label style="margin-top:10px">Image (optional)</label>
-        <input type="file" accept="image/*" onchange="onImage(event, ${i})" />
-        <div style="margin-top:10px">
-          <button class="btn btn-danger" onclick="removeCard(${i})">Remove</button>
-        </div>
-      </div>`;
+      const thumb = c.imageData
+        ? '<div class="thumb-wrap"><img src="' + c.imageData + '" alt=""/><button type="button" class="btn btn-danger" onclick="removeImage(' + i + ')">Remove image</button></div>'
+        : '';
+      return '<div class="card" data-card="' + i + '">' +
+        '<strong>Card ' + (i + 1) + '</strong>' +
+        '<label style="margin-top:10px">Target word</label>' +
+        '<input id="word-' + i + '" value="' + escapeAttr(c.targetWord) + '" oninput="onWord(' + i + ', this.value)" style="text-transform:uppercase" />' +
+        '<label style="margin-top:10px">Blanks (click to hide/show)</label>' +
+        '<div class="letters" id="blanks-' + i + '">' + (toggles || '<span style="color:#5a6a7a">Type a word</span>') + '</div>' +
+        '<label style="margin-top:10px">Aliases (comma-separated, helps voice)</label>' +
+        '<input value="' + escapeAttr(c.aliases || '') + '" oninput="cards[' + i + '].aliases=this.value" placeholder="e.g. tad pole" />' +
+        '<label style="margin-top:10px">Hint</label>' +
+        '<input value="' + escapeAttr(c.hint || '') + '" oninput="cards[' + i + '].hint=this.value" />' +
+        '<label style="margin-top:10px">Image (optional)</label>' +
+        '<input type="file" accept="image/*" onchange="onImage(event, ' + i + ')" />' +
+        thumb +
+        '<div style="margin-top:10px"><button class="btn btn-danger" onclick="removeCard(' + i + ')">Remove</button></div>' +
+        '</div>';
     }).join('');
   }
 
-  function escapeAttr(s) {
-    return String(s || '').replace(/&/g,'&').replace(/"/g,'"').replace(/</g,'<');
-  }
-
-  function onWord(i, v) {
-    cards[i].targetWord = String(v || '').toUpperCase().replace(/[^A-Z\s\-']/g, '').trim();
+  function updateBlanksOnly(i) {
     const L = lettersOf(cards[i].targetWord);
     if (!cards[i].blanks || cards[i].blanks.length !== L.length) {
       cards[i].blanks = L.split('').map(ch => 'AEIOU'.includes(ch));
     }
-    render();
+    const el = document.getElementById('blanks-' + i);
+    if (!el) return;
+    const toggles = L.split('').map((ch, j) =>
+      '<button type="button" class="letter ' + (cards[i].blanks[j] ? 'blank' : '') + '" onclick="toggleBlank(' + i + ',' + j + ')">' +
+      (cards[i].blanks[j] ? '_' : ch) + '</button>'
+    ).join('');
+    el.innerHTML = toggles || '<span style="color:#5a6a7a">Type a word</span>';
+  }
+
+  function onWord(i, v) {
+    cards[i].targetWord = String(v || '').toUpperCase().replace(/[^A-Z\s\-']/g, '').trim();
+    updateBlanksOnly(i);
   }
 
   function toggleBlank(i, j) {
     cards[i].blanks[j] = !cards[i].blanks[j];
-    render();
+    updateBlanksOnly(i);
   }
 
   function onImage(e, i) {
@@ -128,7 +147,7 @@
     r.onload = () => {
       const img = new Image();
       img.onload = () => {
-        const max = 400;
+        const max = 320;
         let w = img.width, h = img.height;
         if (w > max || h > max) {
           if (w > h) { h = Math.round(h * max / w); w = max; }
@@ -137,12 +156,19 @@
         const c = document.createElement('canvas');
         c.width = w; c.height = h;
         c.getContext('2d').drawImage(img, 0, 0, w, h);
-        cards[i].imageData = c.toDataURL('image/jpeg', 0.8);
+        cards[i].imageData = c.toDataURL('image/jpeg', 0.72);
         toast('Image added');
+        render();
       };
       img.src = r.result;
     };
     r.readAsDataURL(f);
+  }
+
+  function removeImage(i) {
+    cards[i].imageData = null;
+    render();
+    toast('Image removed');
   }
 
   function addCard() {
@@ -179,7 +205,7 @@
   function shareLink() {
     const url = playUrl();
     if (!url) { toast('Add a target word first'); return; }
-    if (url.length > 12000) { toast('Lesson too large for a link (big images). Remove some images.'); return; }
+    if (url.length > 8000) { toast('Lesson too large for a link. Use Export Offline HTML or remove images.'); return; }
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(url).then(() => toast('Play link copied!')).catch(() => prompt('Copy link:', url));
     } else prompt('Copy link:', url);
@@ -189,6 +215,30 @@
     const url = playUrl();
     if (!url) { toast('Add a target word first'); return; }
     location.href = url;
+  }
+
+  function exportOffline() {
+    const data = lessonPayload();
+    if (!data.cards.length) { toast('Add a target word first'); return; }
+    toast('Building offline file…');
+    Promise.all([
+      fetch('./play.html').then(r => r.ok ? r.text() : Promise.reject()),
+      fetch('./play-app.js').then(r => r.ok ? r.text() : Promise.reject())
+    ]).then(([playHtml, playJs]) => {
+      const lessonJson = JSON.stringify(data).replace(/</g, '\\u003c');
+      let html = playHtml
+        .replace(/<script\s+src=["']\.\/play-app\.js["']><\/script>/i,
+          '<script>window.EMBEDDED_LESSON=' + lessonJson + ';</' + 'script><script>' + playJs + '</' + 'script>');
+      const blob = new Blob([html], { type: 'text/html' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = (data.title || 'speech-game').replace(/[^a-z0-9-_]+/gi, '-').toLowerCase() + '-offline.html';
+      a.click();
+      URL.revokeObjectURL(a.href);
+      toast('Offline HTML downloaded');
+    }).catch(() => {
+      toast('Export needs network once (to load player files). Try again online.');
+    });
   }
 
   function saveLocal() {
